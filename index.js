@@ -12,44 +12,19 @@ app.get('/transcript', async (req, res) => {
   if (!videoId) return res.status(400).json({ error: 'videoId is required' });
 
   try {
-    // Fetch YouTube page
-    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    const response = await fetch(`https://api.supadata.ai/v1/youtube/transcript?videoId=${videoId}&text=true`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
+        'x-api-key': process.env.SUPADATA_API_KEY
       }
     });
 
-    const html = await pageRes.text();
+    const data = await response.json();
 
-    // Extract caption tracks
-    const match = html.match(/"captionTracks":(\[.*?\])/);
-    if (!match) return res.status(404).json({ error: 'No captions found for this video.' });
+    if (!response.ok || !data.content) {
+      return res.status(404).json({ error: 'Could not fetch transcript. Video may have captions disabled.' });
+    }
 
-    const tracks = JSON.parse(match[1]);
-    const enTrack = tracks.find(t => t.languageCode === 'en') ||
-                    tracks.find(t => t.languageCode?.startsWith('en')) ||
-                    tracks[0];
-
-    if (!enTrack?.baseUrl) return res.status(404).json({ error: 'No usable caption track found.' });
-
-    // Fetch the actual transcript XML
-    const xmlRes = await fetch(enTrack.baseUrl);
-    const xml = await xmlRes.text();
-
-    // Parse XML to plain text
-    const texts = [...xml.matchAll(/<text[^>]*>(.*?)<\/text>/gs)]
-      .map(m => m[1]
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&#39;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/<[^>]*>/g, '')
-      );
-
-    const transcript = texts.join(' ');
-    res.json({ transcript });
+    res.json({ transcript: data.content });
 
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch transcript: ' + err.message });
